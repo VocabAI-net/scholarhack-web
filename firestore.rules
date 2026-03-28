@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: subscribers
+    // Document ID: auto-generated
+    // Fields:
+    //   - email: string (required, email format)
+    //   - createdAt: timestamp (required)
+    //   - source: string (optional)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "ilyosbeknizomov024@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidSubscriber(data) {
+      return data.keys().hasAll(['email', 'createdAt']) &&
+             data.keys().hasOnly(['email', 'createdAt', 'source']) &&
+             isValidEmail(data.email) &&
+             data.createdAt is timestamp &&
+             (data.source is string || !('source' in data));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    match /subscribers/{subscriberId} {
+      // Allow anyone to subscribe
+      allow create: if isValidSubscriber(request.resource.data);
+      
+      // Only admins can see the list
+      allow read: if isAdmin();
+      
+      // No updates or deletes for public
+      allow update, delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow write: if isAdmin();
+    }
+  }
+}
